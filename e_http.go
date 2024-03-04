@@ -14,11 +14,11 @@ type Service struct {
 	addr string
 	ln   net.Listener
 
-	store Store
+	store KVStore
 }
 
 // NewHttp returns an uninitialized HTTP service.
-func NewHttp(addr string, store Store) *Service {
+func NewHttp(addr string, store KVStore) *Service {
 	return &Service{
 		addr:  addr,
 		store: store,

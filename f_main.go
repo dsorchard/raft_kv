@@ -17,7 +17,7 @@ var nodeID string
 
 func main() {
 
-	s := NewDistKVServer()
+	s := NewRaftKVStore()
 	s.RaftBind = raftAddr
 	if err := s.Open(joinAddr == "", nodeID); err != nil {
 		log.Fatalf("failed to open store: %s", err.Error())

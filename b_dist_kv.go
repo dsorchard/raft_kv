@@ -22,22 +22,14 @@ type command struct {
 	Value string `json:"value,omitempty"`
 }
 
-// Store is the interface Raft-backed key-value stores must implement.
-type Store interface {
-	// Get returns the value for the given key.
+type KVStore interface {
 	Get(key string) (string, error)
-
-	// Set sets the value for the given key, via distributed consensus.
 	Set(key, value string) error
-
-	// Delete removes the given key, via distributed consensus.
 	Delete(key string) error
-
-	// Join joins the node, identitifed by nodeID and reachable at addr, to the cluster.
 	Join(nodeID string, addr string) error
 }
 
-type DistKVServer struct {
+type RaftKVStore struct {
 	RaftDir  string
 	RaftBind string
 
@@ -47,15 +39,15 @@ type DistKVServer struct {
 	m  map[string]string
 }
 
-var _ Store = new(DistKVServer)
+var _ KVStore = new(RaftKVStore)
 
-func NewDistKVServer() *DistKVServer {
-	return &DistKVServer{
+func NewRaftKVStore() *RaftKVStore {
+	return &RaftKVStore{
 		m: make(map[string]string),
 	}
 }
 
-func (s *DistKVServer) Open(isFirstNode bool, localID string) error {
+func (s *RaftKVStore) Open(isFirstNode bool, localID string) error {
 	// Setup Raft configuration.
 	config := raft.DefaultConfig()
 	config.LocalID = raft.ServerID(localID)
@@ -71,17 +63,15 @@ func (s *DistKVServer) Open(isFirstNode bool, localID string) error {
 	}
 
 	// Create the snapshot store. This allows the Raft to truncate the log.
-	snapshots, err := raft.NewFileSnapshotStore(s.RaftDir, retainSnapshotCount, os.Stderr)
+	snapshotStore, err := raft.NewFileSnapshotStore(s.RaftDir, retainSnapshotCount, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("file snapshot store: %s", err)
 	}
-
-	// Create the log store and stable store.
-	var logStore raft.LogStore = raft.NewInmemStore()
+	var logStore raft.LogStore = raft.NewInmemStore() // Create the log store and stable store.
 	var stableStore raft.StableStore = raft.NewInmemStore()
 
 	// Instantiate the Raft systems.
-	ra, err := raft.NewRaft(config, (*fsm)(s), logStore, stableStore, snapshots, transport)
+	ra, err := raft.NewRaft(config, (*fsm)(s), logStore, stableStore, snapshotStore, transport)
 	if err != nil {
 		return fmt.Errorf("new raft: %s", err)
 	}
@@ -102,13 +92,13 @@ func (s *DistKVServer) Open(isFirstNode bool, localID string) error {
 
 }
 
-func (s *DistKVServer) Get(key string) (string, error) {
+func (s *RaftKVStore) Get(key string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.m[key], nil
 }
 
-func (s *DistKVServer) Set(key, value string) error {
+func (s *RaftKVStore) Set(key, value string) error {
 	if s.raft.State() != raft.Leader {
 		return fmt.Errorf("not leader")
 	}
@@ -127,7 +117,7 @@ func (s *DistKVServer) Set(key, value string) error {
 	return f.Error()
 }
 
-func (s *DistKVServer) Delete(key string) error {
+func (s *RaftKVStore) Delete(key string) error {
 	if s.raft.State() != raft.Leader {
 		return fmt.Errorf("not leader")
 	}
@@ -145,7 +135,7 @@ func (s *DistKVServer) Delete(key string) error {
 	return f.Error()
 }
 
-func (s *DistKVServer) Join(nodeID string, addr string) error {
+func (s *RaftKVStore) Join(nodeID string, addr string) error {
 	log.Printf("received join request for remote node %s at %s", nodeID, addr)
 
 	configFuture := s.raft.GetConfiguration()

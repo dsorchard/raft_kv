@@ -7,7 +7,7 @@ import (
 	"io"
 )
 
-type fsm DistKVServer
+type fsm RaftKVStore
 
 var _ raft.FSM = new(fsm)
 var _ raft.FSMSnapshot = new(fsmSnapshot)
@@ -21,9 +21,15 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 
 	switch c.Op {
 	case "set":
-		return f.applySet(c.Key, c.Value)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.m[c.Key] = c.Key
+		return nil
 	case "delete":
-		return f.applyDelete(c.Key)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		delete(f.m, c.Key)
+		return nil
 	default:
 		panic(fmt.Sprintf("unrecognized command op: %s", c.Op))
 	}
@@ -49,23 +55,7 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 		return err
 	}
 
-	// Set the state from the snapshot, no lock required according to
-	// Hashicorp docs.
 	f.m = o
-	return nil
-}
-
-func (f *fsm) applySet(key, value string) interface{} {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.m[key] = value
-	return nil
-}
-
-func (f *fsm) applyDelete(key string) interface{} {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	delete(f.m, key)
 	return nil
 }
 
@@ -83,17 +73,14 @@ func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 			return err
 		}
 
-		// Write data to sink.
 		if _, err := sink.Write(b); err != nil {
 			return err
 		}
-
-		// Close the sink.
 		return sink.Close()
 	}()
 
 	if err != nil {
-		sink.Cancel()
+		_ = sink.Cancel()
 	}
 
 	return err
