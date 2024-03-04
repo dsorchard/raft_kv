@@ -21,14 +21,10 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 
 	switch c.Op {
 	case "set":
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		f.m[c.Key] = c.Key
+		_ = f.store.Set(c.Key, c.Value)
 		return nil
 	case "delete":
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		delete(f.m, c.Key)
+		_ = f.store.Delete(c.Key)
 		return nil
 	default:
 		panic(fmt.Sprintf("unrecognized command op: %s", c.Op))
@@ -37,14 +33,7 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 
 // Snapshot returns a snapshot of the key-value store.
 func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	// Clone the map.
-	o := make(map[string]string)
-	for k, v := range f.m {
-		o[k] = v
-	}
+	o, _ := f.store.Snapshot()
 	return &fsmSnapshot{store: o}, nil
 }
 
@@ -55,7 +44,7 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 		return err
 	}
 
-	f.m = o
+	_ = f.store.Restore(o)
 	return nil
 }
 

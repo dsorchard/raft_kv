@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -35,15 +34,14 @@ type RaftKVStore struct {
 
 	raft *raft.Raft
 
-	mu sync.Mutex
-	m  map[string]string
+	store StorageEngine
 }
 
 var _ KVStore = new(RaftKVStore)
 
 func NewRaftKVStore() *RaftKVStore {
 	return &RaftKVStore{
-		m: make(map[string]string),
+		store: NewMemStorageEngine(),
 	}
 }
 
@@ -92,12 +90,13 @@ func (s *RaftKVStore) Open(isFirstNode bool, localID string) error {
 
 }
 
+// Get returns the value for the given key from local store.
 func (s *RaftKVStore) Get(key string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.m[key], nil
+	return s.store.Get(key)
 }
 
+// Set & Delete sets the value for the given key, via distributed consensus.
+// Mostly  focused on Apply method of fsm
 func (s *RaftKVStore) Set(key, value string) error {
 	if s.raft.State() != raft.Leader {
 		return fmt.Errorf("not leader")
@@ -150,7 +149,7 @@ func (s *RaftKVStore) Join(nodeID string, addr string) error {
 		if srv.ID == raft.ServerID(nodeID) || srv.Address == raft.ServerAddress(addr) {
 			// However if *both* the ID and the address are the same, then nothing -- not even
 			// a join operation -- is needed.
-			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(nodeID) {
+			if srv.ID == raft.ServerID(nodeID) && srv.Address == raft.ServerAddress(addr) {
 				log.Printf("node %s at %s already member of cluster, ignoring join request", nodeID, addr)
 				return nil
 			}

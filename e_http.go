@@ -51,7 +51,7 @@ func (s *Service) Start() error {
 
 // Close closes the service.
 func (s *Service) Close() {
-	s.ln.Close()
+	_ = s.ln.Close()
 	return
 }
 
