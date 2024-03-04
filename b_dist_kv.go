@@ -61,11 +61,12 @@ func (s *RaftKVStore) Open(isFirstNode bool, localID string) error {
 	}
 
 	// Create the snapshot store. This allows the Raft to truncate the log.
+	// Create the log store and stable store.
 	snapshotStore, err := raft.NewFileSnapshotStore(s.RaftDir, retainSnapshotCount, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("file snapshot store: %s", err)
 	}
-	var logStore raft.LogStore = raft.NewInmemStore() // Create the log store and stable store.
+	var logStore raft.LogStore = raft.NewInmemStore()
 	var stableStore raft.StableStore = raft.NewInmemStore()
 
 	// Instantiate the Raft systems.
