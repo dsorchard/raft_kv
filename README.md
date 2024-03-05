@@ -29,3 +29,6 @@ curl -XPOST localhost:11000/key -d '{"user1": "alex"}'
 ## Get can happen on any node
 curl -XGET localhost:11002/key/user1
 ```
+
+### TODO
+- Implement sharding for the KV store
